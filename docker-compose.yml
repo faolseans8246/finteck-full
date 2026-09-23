@@ -1,0 +1,89 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:18-alpine
+    container_name: fintech_postgres
+    environment:
+      POSTGRES_DB: fintech_db
+      POSTGRES_USER: fintech_user
+      POSTGRES_PASSWORD: FinTeck-123
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - fintech_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fintech_user -d fintech_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Spring Boot Backend
+  backend:
+    build:
+      context: ./Main_Back_End
+      dockerfile: Dockerfile
+    container_name: fintech_backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: fintech_db
+      DB_USERNAME: fintech_user
+      DB_PASSWORD: FinTeck-123
+      JWT_SECRET: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIwMTA4MjAyNjI3IiwibmFtZSI6IkZpblRlY2giLCJhZG1pbiI6dHJ1ZSwiaWF0IjoxNzg1NzMyMzQ1LCJleHAiOjE3ODU3MzU5NDV9.bhHU1FOHq_n9IQU57e7RJEV2EQ-K6GzNtU3UO7aeMuY
+      JWT_EXPIRATION: 86400000
+    ports:
+      - "2027:2027"
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_storage:/app/storage
+    networks:
+      - fintech_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2027/swagger-ui.html"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # React Frontend with Nginx
+  frontend:
+    build:
+      context: ./browser-platform
+      dockerfile: Dockerfile
+    container_name: fintech_frontend
+    depends_on:
+      - backend
+    ports:
+      - "8080:3000"
+    environment:
+      REACT_APP_API_BASE_URL: http://localhost:2027/api
+    networks:
+      - fintech_network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  backend_uploads:
+    driver: local
+  backend_storage:
+    driver: local
+
+networks:
+  fintech_network:
+    driver: bridge
